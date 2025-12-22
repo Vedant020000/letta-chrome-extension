@@ -194,6 +194,13 @@ h2 {
   text-decoration: underline;
 }
 
+.help-text a:focus {
+  color: var(--text-primary);
+  text-decoration: underline;
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
 /* Error Message */
 .error-message {
   background: rgba(239, 68, 68, 0.1);
@@ -349,13 +356,8 @@ h2 {
   text-decoration: none;
 }
 
-.btn-primary:hover:not(:disabled) {
+.btn-primary:hover {
   background: #e5e5e5;
-}
-
-.btn-primary:focus-visible:not(:disabled) {
-  outline: 2px solid var(--text-primary);
-  outline-offset: 2px;
 }
 
 .btn-primary:disabled {
@@ -376,15 +378,10 @@ h2 {
   transition: all 0.15s;
 }
 
-.btn-secondary:hover:not(:disabled) {
+.btn-secondary:hover {
   background: var(--bg-secondary);
   color: var(--text-primary);
   border-color: var(--border-focus);
-}
-
-.btn-secondary:focus-visible:not(:disabled) {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 
 /* Spinner */
@@ -402,7 +399,9 @@ h2 {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Progress Dots */
