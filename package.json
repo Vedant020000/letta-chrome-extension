@@ -4,9 +4,10 @@
   "description": "Chrome extension for Letta AI with persistent memory",
   "scripts": {
     "build": "node scripts/build.js",
-    "watch": "node scripts/build.js --watch",
-    "clean": "rimraf dist",
-    "rebuild": "npm run clean && npm run build",
+    "build:dev": "node scripts/build.js --dev",
+    "watch": "node scripts/build.js --watch --dev",
+    "clean": "node scripts/build.js --clean",
+    "rebuild": "node scripts/build.js --clean && node scripts/build.js",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write src/**/*.ts",

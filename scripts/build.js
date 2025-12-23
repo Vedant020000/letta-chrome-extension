@@ -1,181 +1,226 @@
+#!/usr/bin/env node
 /* File: scripts/build.js */
 
 const esbuild = require("esbuild");
 const fs = require("fs");
 const path = require("path");
 
-// Ensure dist directory exists
-if (!fs.existsSync("dist")) {
-  fs.mkdirSync("dist", { recursive: true });
-}
+// --- CLI Flags ---
+const args = process.argv.slice(2);
+const isDev = args.includes("--dev");
+const isWatch = args.includes("--watch");
+const isClean = args.includes("--clean");
 
-// Build configurations
-const buildConfigs = [
-  {
-    name: "universal-injector.js",
-    config: {
-      entryPoints: ["src/universal-injector.ts"],
-      bundle: true,
-      outfile: "dist/universal-injector.js",
-      format: "iife",
-      platform: "browser",
-      target: "es2020",
-      sourcemap: false,
-    },
-  },
-  {
-    name: "background.js",
-    config: {
-      entryPoints: ["src/background.ts"],
-      bundle: true,
-      outfile: "dist/background.js",
-      format: "iife",
-      platform: "browser",
-      target: "es2020",
-      sourcemap: false,
-    },
-  },
-  {
-    name: "popup.js",
-    config: {
-      entryPoints: ["src/popup.ts"],
-      bundle: true,
-      outfile: "dist/popup.js",
-      format: "iife",
-      platform: "browser",
-      target: "es2020",
-      sourcemap: false,
-    },
-  },
-  {
-    name: "overview.js",
-    config: {
-      entryPoints: ["src/overview.ts"],
-      bundle: true,
-      outfile: "dist/overview.js",
-      format: "iife",
-      platform: "browser",
-      target: "es2020",
-      sourcemap: false,
-    },
-  },
-  {
-    name: "onboarding.js",
-    config: {
-      entryPoints: ["src/onboarding.ts"],
-      bundle: true,
-      outfile: "dist/onboarding.js",
-      format: "iife",
-      platform: "browser",
-      target: "es2020",
-      sourcemap: false,
-    },
-  },
+// --- Paths ---
+const ROOT_DIR = path.join(__dirname, "..");
+const DIST_DIR = path.join(ROOT_DIR, "dist");
+const SRC_DIR = path.join(ROOT_DIR, "src");
+const ASSETS_DIR = path.join(ROOT_DIR, "assets");
+
+// --- Shared esbuild config ---
+const baseConfig = {
+  bundle: true,
+  format: "iife",
+  platform: "browser",
+  target: "es2020",
+  sourcemap: isDev,
+  minify: !isDev,
+  logLevel: "warning",
+};
+
+// --- Entry points (name maps to src/{name}.ts -> dist/{name}.js) ---
+const entries = [
+  "universal-injector",
+  "background",
+  "popup",
+  "overview",
+  "onboarding",
 ];
 
-// Run all builds concurrently and wait for all to complete
-async function build() {
+// --- Static files to copy ---
+const staticFiles = [
+  "popup.html",
+  "popup.css",
+  "overview.html",
+  "overview.css",
+  "onboarding.html",
+  "onboarding.css",
+  "manifest.json",
+];
+
+// --- Helper Functions ---
+
+function cleanDist() {
+  if (fs.existsSync(DIST_DIR)) {
+    fs.rmSync(DIST_DIR, { recursive: true });
+    console.log("✓ Cleaned dist/");
+  }
+}
+
+function ensureDistDir() {
+  if (!fs.existsSync(DIST_DIR)) {
+    fs.mkdirSync(DIST_DIR, { recursive: true });
+  }
+}
+
+function copyFile(src, dest, label) {
   try {
-    const buildPromises = buildConfigs.map(({ name, config }) =>
-      esbuild
-        .build(config)
-        .then(() => {
-          console.log(`✓ Built ${name}`);
-          return { name, success: true };
-        })
-        .catch(err => {
-          console.error(`✗ Failed to build ${name}:`, err.stack || err.message || err);
-          return { name, success: false, error: err };
-        })
-    );
-
-    const results = await Promise.all(buildPromises);
-    const failures = results.filter(r => !r.success);
-
-    if (failures.length > 0) {
-      console.error(`\n✗ Build failed: ${failures.length} bundle(s) failed`);
-      process.exit(1);
-    }
-
-    // Copy static files from src/
-    copyStaticFiles();
-
-    console.log("\n✓ Build completed successfully!");
-  } catch (err) {
-    console.error("Build failed:", err.stack || err.message || err);
-    process.exit(1);
+    fs.copyFileSync(src, dest);
+    console.log(`✓ Copied ${label}`);
+    return true;
+  } catch (error) {
+    console.error(`✗ Failed to copy ${label}:`, error.message);
+    return false;
   }
 }
 
 function copyStaticFiles() {
-  const filesToCopy = [
-    "src/popup.html",
-    "src/popup.css",
-    "src/overview.html",
-    "src/overview.css",
-    "src/onboarding.html",
-    "src/onboarding.css",
-    "src/manifest.json",
-  ];
+  let success = true;
 
-  filesToCopy.forEach(file => {
-    const fileName = path.basename(file);
-    const srcPath = path.join(__dirname, "..", file);
-    const distPath = path.join(__dirname, "..", "dist", fileName);
-
-    try {
-      fs.copyFileSync(srcPath, distPath);
-      console.log(`✓ Copied ${fileName}`);
-    } catch (error) {
-      console.error(`✗ Failed to copy ${fileName}:`, error.message);
+  // Copy static files from src/
+  for (const file of staticFiles) {
+    const srcPath = path.join(SRC_DIR, file);
+    const destPath = path.join(DIST_DIR, file);
+    if (!copyFile(srcPath, destPath, file)) {
+      success = false;
     }
-  });
+  }
 
   // Copy assets (icons, images)
-  const assetsDir = path.join(__dirname, "..", "assets");
-  const distDir = path.join(__dirname, "..", "dist");
-
-  if (fs.existsSync(assetsDir)) {
-    const assets = fs.readdirSync(assetsDir);
-    assets.forEach(asset => {
-      const srcPath = path.join(assetsDir, asset);
-      const distPath = path.join(distDir, asset);
-
-      try {
-        // Skip directories and hidden files
-        if (fs.statSync(srcPath).isDirectory() || asset.startsWith(".")) {
-          return;
-        }
-
-        fs.copyFileSync(srcPath, distPath);
-        console.log(`✓ Copied asset: ${asset}`);
-      } catch (error) {
-        console.error(`✗ Failed to copy asset ${asset}:`, error.message);
+  if (fs.existsSync(ASSETS_DIR)) {
+    const assets = fs.readdirSync(ASSETS_DIR);
+    for (const asset of assets) {
+      // Skip directories and hidden files
+      const srcPath = path.join(ASSETS_DIR, asset);
+      if (fs.statSync(srcPath).isDirectory() || asset.startsWith(".")) {
+        continue;
       }
-
-      try {
-        fs.copyFileSync(srcPath, distPath);
-        console.log(`✓ Copied asset: ${asset}`);
-      } catch (error) {
-        console.error(`✗ Failed to copy asset ${asset}:`, error.message);
+      const destPath = path.join(DIST_DIR, asset);
+      if (!copyFile(srcPath, destPath, `asset: ${asset}`)) {
+        success = false;
       }
-    });
+    }
   }
 
-  // Copy icon.png if it exists at root (for manifest icons)
-  const iconPath = path.join(__dirname, "..", "icon.png");
-  if (fs.existsSync(iconPath)) {
-    fs.copyFileSync(iconPath, path.join(distDir, "icon.png"));
-    console.log("✓ Copied icon.png");
+  // Copy icon.png from root if it exists
+  const rootIcon = path.join(ROOT_DIR, "icon.png");
+  if (fs.existsSync(rootIcon)) {
+    copyFile(rootIcon, path.join(DIST_DIR, "icon.png"), "icon.png");
   }
 
-  // Copy letta-icon.svg if it exists at root (for web_accessible_resources)
-  const svgIconPath = path.join(__dirname, "..", "letta-icon.svg");
-  if (fs.existsSync(svgIconPath)) {
-    fs.copyFileSync(svgIconPath, path.join(distDir, "letta-icon.svg"));
-    console.log("✓ Copied letta-icon.svg");
+  // Copy letta-icon.svg from root if it exists
+  const rootSvg = path.join(ROOT_DIR, "letta-icon.svg");
+  if (fs.existsSync(rootSvg)) {
+    copyFile(rootSvg, path.join(DIST_DIR, "letta-icon.svg"), "letta-icon.svg");
+  }
+
+  return success;
+}
+
+function getBuildConfigs() {
+  return entries.map(name => ({
+    ...baseConfig,
+    entryPoints: [path.join(SRC_DIR, `${name}.ts`)],
+    outfile: path.join(DIST_DIR, `${name}.js`),
+  }));
+}
+
+// --- Build Functions ---
+
+async function buildOnce() {
+  const configs = getBuildConfigs();
+  const results = await Promise.all(
+    configs.map((config, i) =>
+      esbuild
+        .build(config)
+        .then(() => {
+          console.log(`✓ Built ${entries[i]}.js`);
+          return { success: true };
+        })
+        .catch(err => {
+          console.error(`✗ Failed to build ${entries[i]}.js:`, err.message);
+          return { success: false };
+        })
+    )
+  );
+
+  const failures = results.filter(r => !r.success).length;
+  if (failures > 0) {
+    throw new Error(`${failures} bundle(s) failed to build`);
   }
 }
 
-// Run the build
-build();
+async function buildWatch() {
+  const configs = getBuildConfigs();
+  const contexts = await Promise.all(
+    configs.map(async (config, i) => {
+      const ctx = await esbuild.context({
+        ...config,
+        plugins: [
+          {
+            name: "rebuild-notify",
+            setup(build) {
+              build.onEnd(result => {
+                if (result.errors.length === 0) {
+                  console.log(`✓ Rebuilt ${entries[i]}.js`);
+                }
+              });
+            },
+          },
+        ],
+      });
+      return ctx;
+    })
+  );
+
+  // Start watching all contexts
+  await Promise.all(contexts.map(ctx => ctx.watch()));
+  console.log("\n👀 Watching for changes... (Ctrl+C to stop)\n");
+
+  // Keep process alive
+  process.on("SIGINT", async () => {
+    console.log("\n\nStopping watch mode...");
+    await Promise.all(contexts.map(ctx => ctx.dispose()));
+    process.exit(0);
+  });
+}
+
+// --- Main ---
+
+async function main() {
+  const startTime = Date.now();
+
+  console.log(`\n🔨 Build mode: ${isDev ? "development" : "production"}${isWatch ? " (watch)" : ""}\n`);
+
+  // Clean if requested
+  if (isClean) {
+    cleanDist();
+  }
+
+  // Ensure dist directory exists
+  ensureDistDir();
+
+  try {
+    if (isWatch) {
+      // Initial build
+      await buildOnce();
+      copyStaticFiles();
+      console.log(`\n✓ Initial build completed in ${Date.now() - startTime}ms`);
+
+      // Start watch mode
+      await buildWatch();
+    } else {
+      // One-time build
+      await buildOnce();
+      copyStaticFiles();
+
+      const duration = Date.now() - startTime;
+      console.log(`\n✓ Build completed in ${duration}ms`);
+    }
+  } catch (err) {
+    console.error(`\n✗ Build failed: ${err.message}`);
+    process.exit(1);
+  }
+}
+
+main();
