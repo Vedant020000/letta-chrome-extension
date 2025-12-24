@@ -12,7 +12,7 @@ import {
 } from "./constants";
 
 // State
-let currentStep = 1;
+let _currentStep = 1;
 let apiKey = "";
 
 // Elements - with runtime validation
@@ -97,7 +97,7 @@ function goToStep(step: number) {
     }
   });
   
-  currentStep = step;
+  _currentStep = step;
 }
 
 // Show error
